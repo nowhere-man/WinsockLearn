@@ -16,10 +16,14 @@ public:
     SendSocket(DWORD flag);
     void SyncSend();
     void AsyncSend();
-    void CreateBuf(int wsaBufCount);
-    void DestoryBuf(LPWSABUF wsaBuf, int wsaBufCount);
+    void AsyncSend_IOCP();
 private:
-    std::vector<WSABUF> m_wsaBufs;
+    int64_t m_startTime{0};
+    int m_sendCount{0};
+    float m_timeCost{0};
+    DWORD m_bytesSent{0};
+    DWORD m_totalBytesSent{0};
+    int m_pendingCount{0};
 };
 
 #endif

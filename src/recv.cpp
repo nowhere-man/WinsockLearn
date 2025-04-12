@@ -29,63 +29,106 @@ bool RecvSocket::Poll()
     return ret > 0;
 }
 
-void RecvSocket::CreateBuf(int wsaBufCount)
-{
-    m_wsaBufs.resize(wsaBufCount);
-    for (int i = 0; i < wsaBufCount; ++i) {
-        m_wsaBufs[i].buf = new char[RECV_BUF_SIZE];
-        m_wsaBufs[i].len = RECV_BUF_SIZE;
-    }
-}
-
-void RecvSocket::DestoryBuf(LPWSABUF wsaBuf, int wsaBufCount)
-{
-    for (int i = 0; i < wsaBufCount; ++i) {
-        delete[] wsaBuf[i].buf;
-    }
-}
-
 void RecvSocket::SyncRecv()
 {
-    int64_t startTime;
-    int recvCount = 0;
-    float timeCost = 0;
-    float transmitTime = 0;
-    DWORD byteRecv = 0;
-    DWORD flags = 0;
-    sockaddr recvAddr;
-    int addrLen = sizeof(recvAddr);
     while (true) {
         if (!Poll()) {
             continue;
         }
-        startTime = MicrosecondsTimestamp();
-        CreateBuf(WSABUF_COUNT);
-        int result = WSARecvFrom(m_socket, m_wsaBufs.data(), m_wsaBufs.size(), &byteRecv, &flags, &recvAddr, &addrLen, NULL, NULL);
+        m_startTime = MicrosecondsTimestamp();
+        WSABUF *wsaBuf = CreateBuf(RECV_BUF_SIZE);
+        m_bytesRecv = 0;
+        int result = WSARecvFrom(m_socket, wsaBuf, 1, &m_bytesRecv, &m_flags, &m_recvAddr, &m_addrLen, NULL, NULL);
         if (result == SOCKET_ERROR) {
             int errNo = WSAGetLastError();
             std::cout << "WSARecvFrom error:" << errNo << "\n";
             continue;
         }
-        auto endTime = MicrosecondsTimestamp();
-        for (auto& wsaBuf : m_wsaBufs) {
-            int64_t sendTime = std::stoll(wsaBuf.buf);
-            transmitTime += (endTime - sendTime) / 1000.f;
-        }
-        recvCount++;
-        timeCost += (endTime - startTime ) / 1000.f;
+        m_endTime = MicrosecondsTimestamp();
+        int64_t sendTime = std::stoll(wsaBuf->buf);
+        m_transmitTime += (m_endTime - sendTime) / 1000.f;
+        m_recvCount++;
+        m_timeCost += (m_endTime - m_startTime ) / 1000.f;
+        m_totalBytesRecv += m_bytesRecv;
 
-        DestoryBuf(m_wsaBufs.data(), m_wsaBufs.size());
-        if (recvCount >= TRANSIMIT_PKT_COUNT) {
+        DestoryBuf(wsaBuf);
+        if (m_recvCount >= TRANSIMIT_PKT_COUNT) {
             break;
         }
     }
-    std::cout << "received packet: " << recvCount
-              << ", recv time cost: " << timeCost << " ms"
-              << ", total transmit time: " << transmitTime << " ms.\n";
+    printf_s("received packt count: %d, received packet Bytes:%lu, WSARecvFrom cost: %f ms, total transmit time: %f ms.\n",
+        m_recvCount, m_totalBytesRecv, m_timeCost, m_transmitTime);
 }
 
 void RecvSocket::AsyncRecv()
 {
+    while (true) {
+        if (!Poll()) {
+            continue;
+        }
+        m_startTime = MicrosecondsTimestamp();
+        PerIoContext* ioCtx = CreateIoContext(RECV_BUF_SIZE, OP_RECV);
+        ioCtx->overlapped.hEvent = WSACreateEvent();
+        m_bytesRecv = 0;
+        int result = WSARecvFrom(m_socket, &ioCtx->wsaBuf, 1, &m_bytesRecv, &m_flags, &m_recvAddr, &m_addrLen, &ioCtx->overlapped, NULL);
+        if (result == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err == WSA_IO_PENDING) {
+                m_pendingCount++;
+                WSAWaitForMultipleEvents(1, &ioCtx->overlapped.hEvent, TRUE, WSA_INFINITE, FALSE);
+                WSAGetOverlappedResult(m_socket, &ioCtx->overlapped, &m_bytesRecv, FALSE, 0);
+            } else {
+                std::cout << "WSASendTo error:" << err << "\n";
+                DestoryIoContext(ioCtx);
+                continue;
+            }
+        }
+        m_endTime = MicrosecondsTimestamp();
+        int64_t sendTime = std::stoll(ioCtx->wsaBuf.buf);
+        m_transmitTime += (m_endTime - sendTime) / 1000.f;
+        m_recvCount++;
+        m_timeCost += (m_endTime - m_startTime ) / 1000.f;
+        m_totalBytesRecv += m_bytesRecv;
 
+        DestoryIoContext(ioCtx);
+        if (m_recvCount >= TRANSIMIT_PKT_COUNT) {
+            break;
+        }
+    }
+
+    printf_s("received packt count: %d, received packet Bytes:%lu, pending count: %d, WSARecvFrom cost: %f ms, total transmit time: %f ms.\n",
+        m_recvCount, m_totalBytesRecv, m_pendingCount, m_timeCost, m_transmitTime);
+}
+
+void RecvSocket::AsyncRecv_IOCP()
+{
+    while (true) {
+        if (!Poll()) {
+            continue;
+        }
+        m_startTime = MicrosecondsTimestamp();
+        PerIoContext* ioCtx = CreateIoContext(RECV_BUF_SIZE, OP_RECV);
+        ioCtx->overlapped.hEvent = WSACreateEvent();
+        m_bytesRecv = 0;
+        int result = WSARecvFrom(m_socket, &ioCtx->wsaBuf, 1, &m_bytesRecv, &m_flags, &m_recvAddr, &m_addrLen, &ioCtx->overlapped, NULL);
+        if (result == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err == WSA_IO_PENDING) {
+                m_pendingCount++;
+            } else {
+                std::cout << "WSARecvFrom error:" << err << "\n";
+                DestoryIoContext(ioCtx);
+                continue;
+            }
+        }
+        m_recvCount++;
+        m_timeCost += (MicrosecondsTimestamp() - m_startTime ) / 1000.f;
+
+        if (m_recvCount >= TRANSIMIT_PKT_COUNT) {
+            break;
+        }
+    }
+
+    printf_s("WSARecvFrom: received packt count: %d, pending count: %d, WSARecvFrom cost: %f ms.\n",
+        m_recvCount, m_pendingCount, m_timeCost);
 }

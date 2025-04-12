@@ -15,45 +15,78 @@ SendSocket::SendSocket(DWORD flag)
     CreateSocket(flag);
 }
 
-void SendSocket::CreateBuf(int wsaBufCount)
-{
-    m_wsaBufs.resize(wsaBufCount);
-    for (int i = 0; i < wsaBufCount; ++i) {
-        m_wsaBufs[i].buf = new char[SEND_BUF_SIZE];
-        m_wsaBufs[i].len = SEND_BUF_SIZE;
-        sprintf(m_wsaBufs[i].buf, "%llu", MicrosecondsTimestamp());
-    }
-}
-
-void SendSocket::DestoryBuf(LPWSABUF wsaBuf, int wsaBufCount)
-{
-    for (int i = 0; i < wsaBufCount; ++i) {
-        delete[] wsaBuf[i].buf;
-    }
-}
-
 void SendSocket::SyncSend()
 {
-    int64_t startTime;
-    int sendCount = 0;
-    float timeCost = 0;
-    DWORD bytesSent = 0;
-    while (sendCount < TRANSIMIT_PKT_COUNT) {
-        startTime = MicrosecondsTimestamp();
-        CreateBuf(WSABUF_COUNT);
-        int result = WSASendTo(m_socket, m_wsaBufs.data(), m_wsaBufs.size(), &bytesSent, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), NULL, NULL);
+    while (m_sendCount < TRANSIMIT_PKT_COUNT) {
+        m_startTime = MicrosecondsTimestamp();
+        WSABUF *wsaBuf = CreateBuf(SEND_BUF_SIZE);
+        sprintf(wsaBuf->buf, "%llu", MicrosecondsTimestamp());
+        m_bytesSent = 0;
+        int result = WSASendTo(m_socket, wsaBuf, 1, &m_bytesSent, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), NULL, NULL);
         if (result == SOCKET_ERROR) {
             std::cout << "WSASendTo error:" << WSAGetLastError() << "\n";
+            DestoryBuf(wsaBuf);
             continue;
         }
-        DestoryBuf(m_wsaBufs.data(), m_wsaBufs.size());
-        sendCount++;
-        timeCost += (MicrosecondsTimestamp() - startTime ) / 1000.f;
+        DestoryBuf(wsaBuf);
+        m_sendCount++;
+        m_totalBytesSent += m_bytesSent;
+        m_timeCost += (MicrosecondsTimestamp() - m_startTime ) / 1000.f;
     }
-    std::cout << "sent packet: " << sendCount << ", time cost: " << timeCost << " ms.\n";
+    printf_s("sent packt count: %d, sent packet Bytes:%lu, WSASendTo cost: %f ms.\n",
+        m_sendCount, m_totalBytesSent, m_timeCost);
 }
 
 void SendSocket::AsyncSend()
 {
+    while (m_sendCount < TRANSIMIT_PKT_COUNT) {
+        m_startTime = MicrosecondsTimestamp();
+        PerIoContext* ioCtx = CreateIoContext(SEND_BUF_SIZE, OP_SEND);
+        ioCtx->overlapped.hEvent = WSACreateEvent();
+        sprintf(ioCtx->wsaBuf.buf, "%llu", MicrosecondsTimestamp());
+        m_bytesSent = 0;
+        int result = WSASendTo(m_socket, &ioCtx->wsaBuf, 1, &m_bytesSent, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), &ioCtx->overlapped, NULL);
+        if (result == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err == WSA_IO_PENDING) {
+                m_pendingCount++;
+                WSAWaitForMultipleEvents(1, &ioCtx->overlapped.hEvent, TRUE, WSA_INFINITE, FALSE);
+                WSAGetOverlappedResult(m_socket, &ioCtx->overlapped, &m_bytesSent, FALSE, 0);
+            } else {
+                std::cout << "WSASendTo error:" << err << "\n";
+                DestoryIoContext(ioCtx);
+                continue;
+            }
+        }
+        DestoryIoContext(ioCtx);
+        m_sendCount++;
+        m_totalBytesSent += m_bytesSent;
+        m_timeCost += (MicrosecondsTimestamp() - m_startTime ) / 1000.f;
+    }
+    printf_s("sent packt count: %d, sent packet Bytes:%lu, pending count: %d, WSASendTo cost: %f ms.\n",
+        m_sendCount, m_totalBytesSent, m_pendingCount, m_timeCost);
+}
 
+void SendSocket::AsyncSend_IOCP()
+{
+    while (m_sendCount < TRANSIMIT_PKT_COUNT) {
+        m_startTime = MicrosecondsTimestamp();
+        PerIoContext* ioCtx = CreateIoContext(SEND_BUF_SIZE, OP_SEND);
+        sprintf(ioCtx->wsaBuf.buf, "%llu", MicrosecondsTimestamp());
+        m_bytesSent = 0;
+        int result = WSASendTo(m_socket, &ioCtx->wsaBuf, 1, NULL, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), &ioCtx->overlapped, NULL);
+        if (result == SOCKET_ERROR) {
+            int err = WSAGetLastError();
+            if (err == WSA_IO_PENDING) {
+                m_pendingCount++;
+            } else {
+                std::cout << "WSASendTo error:" << err << "\n";
+                DestoryIoContext(ioCtx);
+                continue;
+            }
+        }
+        m_sendCount++;
+        m_timeCost += (MicrosecondsTimestamp() - m_startTime ) / 1000.f;
+    }
+    printf_s("WSASendTo: sent packt count: %d, pending count: %d, WSASendTo cost: %f ms.\n", m_sendCount, m_pendingCount, m_timeCost);
 }

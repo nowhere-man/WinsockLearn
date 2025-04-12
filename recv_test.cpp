@@ -1,9 +1,31 @@
 #include "src/recv.h"
 
-int main()
+int main(int argc, char* argv[])
 {
-    RecvSocket recvSocket(0);
-    recvSocket.SyncRecv();
+    if (argc != 2) {
+        std::cerr << "Wrong Usage.\n";
+        return 1;
+    }
 
+    int option = atoi(argv[1]);
+    switch (option) {
+        case 1: {
+            RecvSocket recvSocket(0);
+            recvSocket.SyncRecv();
+            break;
+        }
+        case 2: {
+            RecvSocket recvSocket(WSA_FLAG_OVERLAPPED);
+            recvSocket.AsyncRecv();
+            break;
+        }
+        case 3: {
+            RecvSocket recvSocket(WSA_FLAG_OVERLAPPED);
+            recvSocket.AsyncRecv_IOCP();
+            break;
+        }
+        default:
+            break;
+    }
     return 0;
 }

@@ -19,11 +19,20 @@ public:
     bool Poll();
     void SyncRecv();
     void AsyncRecv();
-    void CreateBuf(int wsaBufCount);
-    void DestoryBuf(LPWSABUF wsaBuf, int wsaBufCount);
+    void AsyncRecv_IOCP();
 private:
     pollfd m_fds[1];
-    std::vector<WSABUF> m_wsaBufs;
+    int64_t m_startTime;
+    int64_t m_endTime;
+    int m_recvCount{0};
+    int m_pendingCount{0};
+    float m_timeCost{0};
+    float m_transmitTime{0};
+    DWORD m_bytesRecv{0};
+    DWORD m_totalBytesRecv{0};
+    DWORD m_flags{0};
+    sockaddr m_recvAddr;
+    int m_addrLen{sizeof(sockaddr)};
 };
 
 #endif
