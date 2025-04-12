@@ -21,7 +21,9 @@ int main(int argc, char* argv[])
         }
         case 3: {
             RecvSocket recvSocket(WSA_FLAG_OVERLAPPED);
+            recvSocket.CreateIOCP();
             recvSocket.AsyncRecv_IOCP();
+            recvSocket.DestoryIOCP();
             break;
         }
         default:

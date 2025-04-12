@@ -23,19 +23,6 @@ Socket::~Socket()
     }
     if (m_iocpHandle != NULL) {
         CloseHandle(m_iocpHandle);
-        switch (m_operation) {
-            case OP_SEND: {
-                printf_s("IOCP: sent packt count: %d, sent packet bytes:%lu.\n", m_transferredCount, m_totalBytesTransferred);
-                break;
-            }
-            case OP_RECV: {
-                printf_s("IOCP: received packt count: %d, received packet bytes:%lu, total transmit time: %f ms.\n",
-                    m_transferredCount, m_totalBytesTransferred, transmitTime);
-                break;
-            }
-            default:
-                break;
-        }
     }
     WSACleanup();
 }
@@ -88,12 +75,12 @@ void Socket::BindSocket()
 
 void Socket::CreateIOCP()
 {
-    m_iocpHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, 0, 0);
+    m_iocpHandle = CreateIoCompletionPort(INVALID_HANDLE_VALUE, NULL, m_completionKey, 0);
     if (m_iocpHandle == NULL) {
         std::cout << "CreateIoCompletionPort 1 error:" << WSAGetLastError() << "\n";
     }
 
-    if (CreateIoCompletionPort((HANDLE)m_socket, m_iocpHandle, 0, 0) == NULL) {
+    if (CreateIoCompletionPort((HANDLE)m_socket, m_iocpHandle, m_completionKey, 0) == NULL) {
         std::cout << "CreateIoCompletionPort 2 error:" << WSAGetLastError() << "\n";
     }
 
@@ -105,15 +92,19 @@ void Socket::CreateIOCP()
 
 void Socket::DestoryIOCP()
 {
-    if (!PostQueuedCompletionStatus(m_iocpHandle, 0, 0, NULL)) {
-        std::cout << "PostQueuedCompletionStatus error:" << WSAGetLastError() << "\n";
+    for (size_t i = 0; i < m_workerThreads.size(); ++i) {
+        if (!PostQueuedCompletionStatus(m_iocpHandle, 0, CK_STOP, NULL)) {
+            std::cout << "PostQueuedCompletionStatus error:" << WSAGetLastError() << "\n";
+        }
     }
-    m_stopFlag = true;
     for (auto& thread : m_workerThreads) {
         if (thread.joinable()) {
             thread.join();
         }
     }
+
+    printf_s("IOCP: transferrd packt count: %d, transferrd packet bytes:%lu, total transmit time (for receiver): %f ms.\n",
+        m_transferredCount, m_totalBytesTransferred, m_transmitTime);
 }
 
 void Socket::WorkerThread()
@@ -124,22 +115,21 @@ void Socket::WorkerThread()
     ULONG_PTR completionKey = 0;
     PerIoContext* ioCtx = nullptr;
     BOOL result;
-    while (!m_stopFlag) {
+    while (true) {
         result = GetQueuedCompletionStatus(m_iocpHandle, &bytesTransferred, &completionKey, reinterpret_cast<LPOVERLAPPED*>(&ioCtx), INFINITE);
         if (!result) {
             std::cout << "GetQueuedCompletionStatus error:" << WSAGetLastError() << "\n";
             continue;
         }
+        if (completionKey == CK_STOP) {
+            break;
+        }
         if (!ioCtx) {
              std::cout << "IO Context is null.\n";
-             continue;
+             break;
         }
         switch (ioCtx->operation) {
             case OP_SEND: {
-                m_operation = OP_SEND;
-                if (bytesTransferred == 0) {
-                    std::cout << "Send failed.\n";
-                }
                 {
                     std::lock_guard<std::mutex> guard(m_iocpMutex);
                     m_totalBytesTransferred += bytesTransferred;
@@ -149,22 +139,20 @@ void Socket::WorkerThread()
                 break;
             }
             case OP_RECV: {
-                m_operation = OP_RECV;
-                if (bytesTransferred == 0) {
-                    std::cout << "Receive failed.\n";
-                }
                 sendTime = std::stoll(ioCtx->wsaBuf.buf);
                 recvTime = MicrosecondsTimestamp();
                 {
                     std::lock_guard<std::mutex> guard(m_iocpMutex);
                     m_totalBytesTransferred += bytesTransferred;
                     m_transferredCount++;
-                    transmitTime += (recvTime - sendTime) / 1000.f;
+                    m_transmitTime += (recvTime - sendTime) / 1000.f;
                 }
                 DestoryIoContext(ioCtx);
                 break;
             }
             default:
+                std::cout << "Unknown operation type: " << ioCtx->operation << "\n";
+                DestoryIoContext(ioCtx);
                 break;
         }
     }

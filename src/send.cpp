@@ -73,7 +73,6 @@ void SendSocket::AsyncSend_IOCP()
         m_startTime = MicrosecondsTimestamp();
         PerIoContext* ioCtx = CreateIoContext(SEND_BUF_SIZE, OP_SEND);
         sprintf(ioCtx->wsaBuf.buf, "%llu", MicrosecondsTimestamp());
-        m_bytesSent = 0;
         int result = WSASendTo(m_socket, &ioCtx->wsaBuf, 1, NULL, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), &ioCtx->overlapped, NULL);
         if (result == SOCKET_ERROR) {
             int err = WSAGetLastError();
