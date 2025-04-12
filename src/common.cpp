@@ -8,6 +8,13 @@
 #include "common.h"
 #include <cassert>
 
+int64_t MicrosecondsTimestamp()
+{
+    auto now = std::chrono::high_resolution_clock::now();
+    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
+    return microseconds.count();
+}
+
 Socket::Socket()
 {
     WSADATA wsaData;
@@ -70,6 +77,38 @@ void Socket::BindSocket()
     int ret = bind(m_socket, (sockaddr*)&m_sockAddr, sizeof(m_sockAddr));
     if (ret== SOCKET_ERROR) {
         std::cout << "bind error:" << WSAGetLastError() << "\n";
+    }
+}
+
+WSABUF *Socket::CreateBuf(const int bufSize)
+{
+    WSABUF* wsaBuf = new WSABUF();
+    wsaBuf[0].buf = new char[bufSize];
+    wsaBuf[0].len = bufSize;
+    return wsaBuf;
+}
+
+void Socket::DestoryBuf(WSABUF *wsaBuf)
+{
+    delete[] wsaBuf[0].buf;
+    delete wsaBuf;
+}
+
+PerIoContext* Socket::CreateIoContext(const int bufSize, Operation oper)
+{
+    PerIoContext* ioContext = new PerIoContext();
+    ZeroMemory(&ioContext->overlapped, sizeof(OVERLAPPED));
+    ioContext->wsaBuf.buf = new char[bufSize];
+    ioContext->wsaBuf.len = bufSize;
+    ioContext->operation = oper;
+    return ioContext;
+}
+
+void Socket::DestoryIoContext(PerIoContext* ioContext)
+{
+    if (ioContext) {
+        delete[] ioContext->wsaBuf.buf;
+        delete ioContext;
     }
 }
 
@@ -156,43 +195,4 @@ void Socket::WorkerThread()
                 break;
         }
     }
-}
-
-WSABUF *Socket::CreateBuf(const int bufSize)
-{
-    WSABUF* wsaBuf = new WSABUF();
-    wsaBuf[0].buf = new char[bufSize];
-    wsaBuf[0].len = bufSize;
-    return wsaBuf;
-}
-
-void Socket::DestoryBuf(WSABUF *wsaBuf)
-{
-    delete[] wsaBuf[0].buf;
-    delete wsaBuf;
-}
-
-PerIoContext* Socket::CreateIoContext(const int bufSize, Operation oper)
-{
-    PerIoContext* ioContext = new PerIoContext();
-    ZeroMemory(&ioContext->overlapped, sizeof(OVERLAPPED));
-    ioContext->wsaBuf.buf = new char[bufSize];
-    ioContext->wsaBuf.len = bufSize;
-    ioContext->operation = oper;
-    return ioContext;
-}
-
-void Socket::DestoryIoContext(PerIoContext* ioContext)
-{
-    if (ioContext) {
-        delete[] ioContext->wsaBuf.buf;
-        delete ioContext;
-    }
-}
-
-int64_t MicrosecondsTimestamp()
-{
-    auto now = std::chrono::high_resolution_clock::now();
-    auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch());
-    return microseconds.count();
 }
