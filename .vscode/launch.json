@@ -1,0 +1,30 @@
+{
+    "configurations": [
+    {
+        "name": "Send Debug",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/send_test.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${fileDirname}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "lldb",
+        "miDebuggerPath": "C:/Users/Jack/Programs/MSYS2/clang64/bin/lldb.exe"
+    },
+    {
+        "name": "Recv Debug",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "${workspaceFolder}/build/recv_test.exe",
+        "args": [],
+        "stopAtEntry": false,
+        "cwd": "${fileDirname}",
+        "environment": [],
+        "externalConsole": false,
+        "MIMode": "gdb",
+        "miDebuggerPath": "C:/Users/Jack/Programs/MSYS2/clang64/bin/lldb.exe"
+    }
+    ]
+}
