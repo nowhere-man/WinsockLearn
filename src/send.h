@@ -9,8 +9,7 @@
 
 #include "common.h"
 
-constexpr int SEND_PKT_COUNT_TOTAL = 500;
-constexpr int SEND_BUF_SIZE = 1000;
+constexpr int SEND_BUF_SIZE = 1200;
 
 class SendSocket : public Socket {
 public:

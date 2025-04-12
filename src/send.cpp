@@ -21,7 +21,7 @@ void SendSocket::CreateBuf(int wsaBufCount)
     for (int i = 0; i < wsaBufCount; ++i) {
         m_wsaBufs[i].buf = new char[SEND_BUF_SIZE];
         m_wsaBufs[i].len = SEND_BUF_SIZE;
-        memset(m_wsaBufs[i].buf, i, SEND_BUF_SIZE);
+        sprintf(m_wsaBufs[i].buf, "%llu", MicrosecondsTimestamp());
     }
 }
 
@@ -38,7 +38,7 @@ void SendSocket::SyncSend()
     int sendCount = 0;
     float timeCost = 0;
     DWORD bytesSent = 0;
-    while (sendCount < SEND_PKT_COUNT_TOTAL) {
+    while (sendCount < TRANSIMIT_PKT_COUNT) {
         startTime = MicrosecondsTimestamp();
         CreateBuf(WSABUF_COUNT);
         int result = WSASendTo(m_socket, m_wsaBufs.data(), m_wsaBufs.size(), &bytesSent, 0, (sockaddr*)&m_sockAddr, sizeof(sockaddr), NULL, NULL);

@@ -8,7 +8,8 @@
 
 constexpr int UDP_PORT = 9090;
 constexpr int WSABUF_COUNT = 1;
-constexpr int SOCKET_BUFFER_SIZE = 1 * 1024 * 1024;
+constexpr int TRANSIMIT_PKT_COUNT = 1000;
+constexpr int SOCKET_BUFFER_SIZE = 3 * 1024 * 1024;
 
 class Socket {
 public:

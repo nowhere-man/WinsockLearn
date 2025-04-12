@@ -1,5 +1,6 @@
 #include <iostream>
 #include <chrono>
+#include <string>
 
 #include <ws2tcpip.h>
 #include <winsock2.h>
@@ -49,6 +50,7 @@ void RecvSocket::SyncRecv()
     int64_t startTime;
     int recvCount = 0;
     float timeCost = 0;
+    float transmitTime = 0;
     DWORD byteRecv = 0;
     DWORD flags = 0;
     sockaddr recvAddr;
@@ -58,24 +60,29 @@ void RecvSocket::SyncRecv()
             continue;
         }
         startTime = MicrosecondsTimestamp();
-
-        //CreateBuf(WSABUF_COUNT);
-        char buf[1500] = {};
-        WSABUF wsaBuf;
-        wsaBuf.buf = buf;
-        wsaBuf.len = 1500;
-        int result = WSARecvFrom(m_socket, &wsaBuf, 1, &byteRecv, &flags, &recvAddr, &addrLen, NULL, NULL);
+        CreateBuf(WSABUF_COUNT);
+        int result = WSARecvFrom(m_socket, m_wsaBufs.data(), m_wsaBufs.size(), &byteRecv, &flags, &recvAddr, &addrLen, NULL, NULL);
         if (result == SOCKET_ERROR) {
             int errNo = WSAGetLastError();
             std::cout << "WSARecvFrom error:" << errNo << "\n";
             continue;
         }
-        //DestoryBuf(m_wsaBufs.data(), m_wsaBufs.size());
-
+        auto endTime = MicrosecondsTimestamp();
+        for (auto& wsaBuf : m_wsaBufs) {
+            int64_t sendTime = std::stoll(wsaBuf.buf);
+            transmitTime += (endTime - sendTime) / 1000.f;
+        }
         recvCount++;
-        timeCost += (MicrosecondsTimestamp() - startTime ) / 1000.f;
-        std::cout << "received packet: " << recvCount << ", time cost: " << timeCost << " ms.\n";
+        timeCost += (endTime - startTime ) / 1000.f;
+
+        DestoryBuf(m_wsaBufs.data(), m_wsaBufs.size());
+        if (recvCount >= TRANSIMIT_PKT_COUNT) {
+            break;
+        }
     }
+    std::cout << "received packet: " << recvCount
+              << ", recv time cost: " << timeCost << " ms"
+              << ", total transmit time: " << transmitTime << " ms.\n";
 }
 
 void RecvSocket::AsyncRecv()
