@@ -19,9 +19,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED TRUE)
 set(CMAKE_BUILD_TYPE Debug)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-W -Wall -Wextra -pedantic -pedantic-errors)
-
-add_link_options(-l ws2_32)
+if (CMAKE_CXX_COMPILER_ID MATCH "MSVC")
+    add_compile_options(/W3 /Wall /Za /WX)
+else()
+    add_compile_options(-W -Wall -Wextra -pedantic -pedantic-errors)
+    add_link_options(-l ws2_32 mswsock)
+endif()
 
 set (SRC_LSIT_SEND
     send_test.cpp

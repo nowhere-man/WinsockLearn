@@ -1,4 +1,9 @@
-#include "src/recv.h"
+#include "src/RecvSocket.h"
+
+#ifdef _MSC_VER
+#pragma comment(lib, "ws2_32.lib")
+#pragma comment(lib, "mswsock.lib")
+#endif
 
 int main(int argc, char* argv[])
 {
